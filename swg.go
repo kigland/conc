@@ -58,9 +58,11 @@ func safeF(f func() (any, error)) (rst any, err error) {
 }
 
 func (w *SortedWaitGroup) Wait() AllResults {
-	w.wg.Wait()
+	if w.sem != nil {
+		w.wg.Wait()
+		w.Close()
+	}
 	rsts := w.rst
-
 	sort.Slice(rsts, func(i, j int) bool {
 		return rsts[i].Id < rsts[j].Id
 	})
@@ -71,6 +73,15 @@ func (w *SortedWaitGroup) Wait() AllResults {
 	}
 
 	return ordered
+}
+
+func (w *SortedWaitGroup) Close() {
+	w.lck.Lock()
+	defer w.lck.Unlock()
+	if w.sem != nil {
+		close(w.sem)
+		w.sem = nil
+	}
 }
 
 func (w *SortedWaitGroup) Clear() {
