@@ -26,19 +26,22 @@ func (w *SortedWaitGroup) AddTask(f func() (any, error)) *SortedWaitGroup {
 	w.id++
 	w.lck.Unlock()
 
+	sem := w.sem
+	maxConc := w.maxConc
+
 	w.wg.Add(1)
-	go func(id int) {
+	go func(id int, sem chan struct{}, maxConc int) {
 		defer w.wg.Done()
-		if w.maxConc > 0 {
-			w.sem <- struct{}{}
-			defer func() { <-w.sem }()
+		if maxConc > 0 {
+			sem <- struct{}{}
+			defer func() { <-sem }()
 		}
 		rst, err := f()
 
 		w.lck.Lock()
 		w.rst = append(w.rst, idPair{id, Result{Val: rst, Err: err}})
 		w.lck.Unlock()
-	}(id)
+	}(id, sem, maxConc)
 
 	return w
 }
@@ -68,6 +71,9 @@ func (w *SortedWaitGroup) Clear() {
 }
 
 func (w *SortedWaitGroup) initConcSem() {
+	if w.sem != nil {
+		close(w.sem)
+	}
 	if w.maxConc > 0 {
 		w.sem = make(chan struct{}, w.maxConc)
 	} else {
