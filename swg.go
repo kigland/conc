@@ -1,6 +1,7 @@
 package conc
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 )
@@ -36,7 +37,7 @@ func (w *SortedWaitGroup) AddTask(f func() (any, error)) *SortedWaitGroup {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 		}
-		rst, err := f()
+		rst, err := safeF(f)
 
 		w.lck.Lock()
 		w.rst = append(w.rst, idPair{id, Result{Val: rst, Err: err}})
@@ -44,6 +45,16 @@ func (w *SortedWaitGroup) AddTask(f func() (any, error)) *SortedWaitGroup {
 	}(id, sem, maxConc)
 
 	return w
+}
+
+func safeF(f func() (any, error)) (rst any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
+	rst, err = f()
+	return
 }
 
 func (w *SortedWaitGroup) Wait() AllResults {
