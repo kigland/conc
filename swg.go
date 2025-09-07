@@ -6,10 +6,12 @@ import (
 )
 
 type SortedWaitGroup struct {
-	lck sync.Mutex
-	id  int
-	wg  sync.WaitGroup
-	rst []idPair
+	lck     sync.Mutex
+	id      int
+	wg      sync.WaitGroup
+	sem     chan struct{}
+	rst     []idPair
+	maxConc int
 }
 
 func (w *SortedWaitGroup) AddTaskWithoutErr(f func() any) *SortedWaitGroup {
@@ -27,6 +29,10 @@ func (w *SortedWaitGroup) AddTask(f func() (any, error)) *SortedWaitGroup {
 	w.wg.Add(1)
 	go func(id int) {
 		defer w.wg.Done()
+		if w.maxConc > 0 {
+			w.sem <- struct{}{}
+			defer func() { <-w.sem }()
+		}
 		rst, err := f()
 
 		w.lck.Lock()
@@ -58,10 +64,33 @@ func (w *SortedWaitGroup) Clear() {
 	w.id = 0
 	w.wg = sync.WaitGroup{}
 	w.rst = nil
+	w.initConcSem()
+}
+
+func (w *SortedWaitGroup) initConcSem() {
+	if w.maxConc > 0 {
+		w.sem = make(chan struct{}, w.maxConc)
+	} else {
+		w.sem = nil
+	}
 }
 
 func NewSortedWaitGroup() *SortedWaitGroup {
 	w := &SortedWaitGroup{}
+	w.Clear()
+	return w
+}
+
+func (w *SortedWaitGroup) WithNewMaxConc(maxConc int) *SortedWaitGroup {
+	w.maxConc = maxConc
+	w.initConcSem()
+	return w
+}
+
+func NewSortedWaitGroupMaxConc(maxConc int) *SortedWaitGroup {
+	w := &SortedWaitGroup{
+		maxConc: maxConc,
+	}
 	w.Clear()
 	return w
 }
